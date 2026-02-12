@@ -3,5 +3,6 @@ PyPDF2
 gunicorn
 werkzeug
 pdf2docx
+PyMuPDF<1.25.0
 docx2pdf
 pywin32; sys_platform == 'win32'
