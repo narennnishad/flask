@@ -7,6 +7,7 @@ from werkzeug.utils import secure_filename
 import shutil
 from pdf2docx import Converter
 import sys
+import subprocess
 
 # Try importing docx2pdf, handle failure (e.g. on non-Windows without Office)
 try:
@@ -194,18 +195,28 @@ def convert_docx_to_pdf():
         
         file.save(docx_path)
         
-        if docx2pdf_convert is None:
-             return jsonify({'error': 'DOCX to PDF conversion requires Microsoft Word installed on the server (Windows/Mac only).'}), 501
-        
         try:
-            # docx2pdf conversion might need absolute paths
-            # and might fail if Word is not installed/headless issues.
-            # On Windows, pythoncom.CoInitialize() might be needed in threads.
-            import pythoncom
-            pythoncom.CoInitialize()
-            
-            docx2pdf_convert(docx_path, pdf_path)
-            return jsonify({'download_url': f'/download/{pdf_filename}'})
+            if sys.platform == 'win32':
+                # Windows: Attempt to use docx2pdf (requires Word)
+                if docx2pdf_convert is None:
+                     return jsonify({'error': 'DOCX to PDF on Windows requires Microsoft Word installed.'}), 501
+                
+                import pythoncom
+                pythoncom.CoInitialize()
+                docx2pdf_convert(docx_path, pdf_path)
+            else:
+                # Docker/Linux: Use LibreOffice
+                # libreoffice --headless --convert-to pdf --outdir <dir> <file>
+                subprocess.run(['libreoffice', '--headless', '--convert-to', 'pdf', '--outdir', folder, docx_path], 
+                               check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                
+            if os.path.exists(pdf_path):
+                return jsonify({'download_url': f'/download/{pdf_filename}'})
+            else:
+                 return jsonify({'error': 'Conversion failed: output file not found'}), 500
+
+        except subprocess.CalledProcessError as e:
+            return jsonify({'error': f"LibreOffice conversion failed. Ensure Docker is used. Error: {e.stderr.decode() if e.stderr else str(e)}"}), 500
         except Exception as e:
             return jsonify({'error': f"Conversion failed: {str(e)}"}), 500
             
