@@ -244,5 +244,33 @@ def cleanup():
     session.pop('uid', None)
     return jsonify({'status': 'cleaned'})
 
+@app.route('/debug')
+def debug_env():
+    import shutil
+    import subprocess
+    
+    lo = shutil.which('libreoffice')
+    so = shutil.which('soffice')
+    java = shutil.which('java')
+    
+    debug_info = {
+        'platform': sys.platform,
+        'libreoffice_path': lo,
+        'soffice_path': so,
+        'java_path': java,
+        'path_env': os.environ.get('PATH'),
+        'cwd': os.getcwd(),
+        'ls_usr_bin': [] 
+    }
+    
+    try:
+        if sys.platform != 'win32':
+             files = os.listdir('/usr/bin')
+             debug_info['ls_usr_bin'] = [f for f in files if 'office' in f]
+    except Exception as e:
+        debug_info['ls_error'] = str(e)
+        
+    return jsonify(debug_info)
+
 if __name__ == '__main__':
     app.run(debug=True)
