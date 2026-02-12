@@ -5,6 +5,14 @@ from flask import Flask, render_template, request, send_file, jsonify, session
 from PyPDF2 import PdfMerger, PdfReader
 from werkzeug.utils import secure_filename
 import shutil
+from pdf2docx import Converter
+import sys
+
+# Try importing docx2pdf, handle failure (e.g. on non-Windows without Office)
+try:
+    from docx2pdf import convert as docx2pdf_convert
+except ImportError:
+    docx2pdf_convert = None
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -139,6 +147,69 @@ def parse_page_ranges(range_str, max_pages):
                 continue
                 
     return groups
+
+@app.route('/convert/pdf-to-docx', methods=['POST'])
+def convert_pdf_to_docx():
+    folder = get_session_folder()
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+        
+    if file and file.filename.lower().endswith('.pdf'):
+        filename = secure_filename(file.filename)
+        pdf_path = os.path.join(folder, filename)
+        docx_filename = os.path.splitext(filename)[0] + '.docx'
+        docx_path = os.path.join(folder, docx_filename)
+        
+        file.save(pdf_path)
+        
+        try:
+            cv = Converter(pdf_path)
+            cv.convert(docx_path)
+            cv.close()
+            return jsonify({'download_url': f'/download/{docx_filename}'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+            
+    return jsonify({'error': 'Invalid file type'}), 400
+
+@app.route('/convert/docx-to-pdf', methods=['POST'])
+def convert_docx_to_pdf():
+    folder = get_session_folder()
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+        
+    if file and file.filename.lower().endswith('.docx'):
+        filename = secure_filename(file.filename)
+        docx_path = os.path.join(folder, filename)
+        pdf_filename = os.path.splitext(filename)[0] + '.pdf'
+        pdf_path = os.path.join(folder, pdf_filename)
+        
+        file.save(docx_path)
+        
+        if docx2pdf_convert is None:
+             return jsonify({'error': 'DOCX to PDF conversion requires Microsoft Word installed on the server (Windows/Mac only).'}), 501
+        
+        try:
+            # docx2pdf conversion might need absolute paths
+            # and might fail if Word is not installed/headless issues.
+            # On Windows, pythoncom.CoInitialize() might be needed in threads.
+            import pythoncom
+            pythoncom.CoInitialize()
+            
+            docx2pdf_convert(docx_path, pdf_path)
+            return jsonify({'download_url': f'/download/{pdf_filename}'})
+        except Exception as e:
+            return jsonify({'error': f"Conversion failed: {str(e)}"}), 500
+            
+    return jsonify({'error': 'Invalid file type'}), 400
 
 @app.route('/download/<filename>')
 def download_file(filename):
