@@ -4,3 +4,4 @@ gunicorn
 werkzeug
 pdf2docx
 docx2pdf
+pywin32
