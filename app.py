@@ -206,8 +206,12 @@ def convert_docx_to_pdf():
                 docx2pdf_convert(docx_path, pdf_path)
             else:
                 # Docker/Linux: Use LibreOffice
+                lo_cmd = shutil.which('libreoffice') or shutil.which('soffice')
+                if not lo_cmd:
+                    raise Exception("LibreOffice not found. Please ensure you are using the Docker runtime on Render.")
+                
                 # libreoffice --headless --convert-to pdf --outdir <dir> <file>
-                subprocess.run(['libreoffice', '--headless', '--convert-to', 'pdf', '--outdir', folder, docx_path], 
+                subprocess.run([lo_cmd, '--headless', '--convert-to', 'pdf', '--outdir', folder, docx_path], 
                                check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 
             if os.path.exists(pdf_path):
